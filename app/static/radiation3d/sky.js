@@ -81,8 +81,8 @@ export function seasonMonths(lat) {
 export const TIME_BANDS = {
   all: { label: "Todo el día", start: 0, end: 24 },
   morning: { label: "Mañana 06–10 h", start: 6, end: 10 },
-  midday: { label: "Mediodía 11–15 h", start: 11, end: 15 },
-  afternoon: { label: "Tarde 16–20 h", start: 16, end: 20 },
+  midday: { label: "Mediodía 10–14 h", start: 10, end: 14 },
+  afternoon: { label: "Tarde 14–18 h", start: 14, end: 18 },
 };
 
 export const radiationKey = (period, band = "all") => band === "all" ? period : `${period}_${band}`;

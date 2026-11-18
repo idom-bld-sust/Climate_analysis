@@ -640,7 +640,7 @@ function showResults() {
 }
 
 function drawMatrix() {
-  const labels = ["Total", "Mañana<br>06–10", "Mediodía<br>11–15", "Tarde<br>16–20"];
+  const labels = ["Total", "Mañana<br>06–10", "Mediodía<br>10–14", "Tarde<br>14–18"];
   let html = '<span></span>' + labels.map((label) => `<span class="matrix-heading">${label}</span>`).join("");
   const data = S.radiation, area = data?.grid.area;
   const totalArea = area?.reduce((a, b) => a + b, 0);

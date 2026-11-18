@@ -13,7 +13,7 @@ test("time bands filter diffuse and ground energy at exact clock boundaries, ret
   const { energies, nSky } = skyMatrices(epw(40, hours), 0, 0.2);
   // EPW end-hours 7..10 represent the four intervals from 06:00 to 10:00.
   for (const [band, selected] of [
-    ["all", hours], ["morning", hours.slice(6, 10)], ["midday", hours.slice(11, 15)], ["afternoon", hours.slice(16, 20)],
+    ["all", hours], ["morning", hours.slice(6, 10)], ["midday", hours.slice(10, 14)], ["afternoon", hours.slice(14, 18)],
   ]) {
     const values = energies[radiationKey("annual", band)];
     close(sum(values.slice(0, nSky)), 2 * sum(selected.map((h) => h.dhi)));
@@ -35,7 +35,7 @@ test("direct radiation is partitioned by time and hemisphere without changing an
     const isolated = skyMatrices(epw(-40, expected), 30, 0).energies;
     assert.deepEqual(south[radiationKey("summer", band)], isolated[radiationKey("annual", band)]);
   }
-  for (const [band, endHours] of [["morning", [7, 8, 9, 10]], ["midday", [12, 13, 14, 15]], ["afternoon", [17, 18, 19, 20]]]) {
+  for (const [band, endHours] of [["morning", [7, 8, 9, 10]], ["midday", [11, 12, 13, 14]], ["afternoon", [15, 16, 17, 18]]]) {
     const isolated = skyMatrices(epw(40, hours.filter((h) => endHours.includes(h.hour))), 0, 0).energies;
     assert.deepEqual(north[radiationKey("annual", band)], isolated.annual);
   }

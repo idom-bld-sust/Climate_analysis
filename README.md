@@ -35,8 +35,8 @@ La web tiene tres pestañas que comparten el mismo EPW:
     el navegador (sin rebotes entre edificios); para luz natural con interreflexiones hace falta Radiance.
   - Resultados por volumen (superficie, media, máximo, total) y CSV punto a punto.
   - Matriz de radiación **anual / verano / invierno × total / mañana / mediodía / tarde**, con la media
-    ponderada por superficie de los volúmenes analizados. Las franjas son **06:00–10:00, 11:00–15:00 y
-    16:00–20:00**, en hora local estándar del EPW (sin cambio de verano); los intervalos intermedios
+    ponderada por superficie de los volúmenes analizados. Las franjas son **06:00–10:00, 10:00–14:00 y
+    14:00–18:00**, en hora local estándar del EPW (sin cambio de verano); los intervalos intermedios
     solo se incluyen en el total diario. El CSV incluye los doce resultados y cada celda tiene su propia leyenda.
   - **PNG vista** descarga el resultado y la perspectiva actuales, con título y leyenda; **Sombras 4 días**
     conserva las sombras de solsticios y equinoccios a la misma hora. Usa **Guardar vista** para recordar

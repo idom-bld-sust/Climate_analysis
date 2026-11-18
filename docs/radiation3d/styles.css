@@ -24,6 +24,23 @@ label .lbl output { font-variant-numeric: tabular-nums; color: var(--ink); }
 .seg button.is-on { background: var(--accent); color: #fff; }
 .seg.small button { height: 24px; font-size: 11.5px; }
 
+.radiation-matrix { display: grid; grid-template-columns: auto repeat(4, minmax(0, 1fr)); gap: 4px; align-items: center; }
+.radiation-matrix .matrix-heading { font-size: 10px; text-align: center; color: var(--muted); }
+.radiation-matrix .matrix-row { font-size: 11px; font-weight: 600; }
+.radiation-matrix button { padding: 4px 2px; height: auto; min-height: 34px; font-size: 11px;
+  background: var(--accent-soft); color: var(--accent); }
+.radiation-matrix button.is-on { background: var(--accent); color: #fff; }
+.views-dialog { position: fixed; width: min(460px, 90vw); max-height: 80vh; overflow-y: auto;
+  border: 1px solid var(--line); border-radius: var(--radius); padding: 24px; color: var(--ink); background: var(--panel); }
+.views-dialog::backdrop { background: rgba(20, 28, 44, .45); }
+.views-dialog h3 { margin-top: 0; }
+.views-dialog #view-form { display: grid; gap: 8px; margin: 16px 0; }
+.views-dialog #view-form[hidden] { display: none; }
+.views-dialog #views-list { display: grid; gap: 8px; }
+.saved-view { display: flex; align-items: center; gap: 8px; }
+.saved-view button:first-child { flex: 1; text-align: left; overflow-wrap: anywhere; height: auto; min-height: 32px; }
+#views-status.is-error { color: #b3261e; }
+
 /* layers / objects */
 .layers { display: flex; flex-direction: column; gap: 6px; max-height: 300px; overflow-y: auto; }
 .layer { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; }

@@ -78,6 +78,15 @@ export function seasonMonths(lat) {
   return lat >= 0 ? { summer: [6, 7, 8], winter: [12, 1, 2] } : { summer: [12, 1, 2], winter: [6, 7, 8] };
 }
 
+export const TIME_BANDS = {
+  all: { label: "Todo el día", start: 0, end: 24 },
+  morning: { label: "Mañana 06–10 h", start: 6, end: 10 },
+  midday: { label: "Mediodía 11–15 h", start: 11, end: 15 },
+  afternoon: { label: "Tarde 16–20 h", start: 16, end: 20 },
+};
+
+export const radiationKey = (period, band = "all") => band === "all" ? period : `${period}_${band}`;
+
 // Returns directions (Float32Array 3*N) and energies per period (Float32Array N, Wh/m2).
 export function skyMatrices(epw, northDeg, albedo) {
   const P = skyPatches(), nSky = P.sky.length, N = P.all.length;
@@ -87,19 +96,23 @@ export function skyMatrices(epw, northDeg, albedo) {
   const periods = { annual: () => true, summer: (m) => seasons.summer.includes(m), winter: (m) => seasons.winter.includes(m) };
   const out = {};
   for (const [key, inPeriod] of Object.entries(periods)) {
-    const E = new Float64Array(N);
-    let dhi = 0, ghi = 0;
-    for (const h of epw.hours) {
-      if (!inPeriod(h.month)) continue;
-      dhi += h.dhi; ghi += h.ghi;
-      if (h.dni <= 0) continue;
-      const s = solarPosition(h.month, h.day, h.hour - 0.5, epw.lat, epw.lon, epw.tz);
-      if (s.elevation <= 0) continue;
-      E[skyIndex(s.elevation, s.azimuth)] += h.dni;
+    for (const [band, { start, end }] of Object.entries(TIME_BANDS)) {
+      const E = new Float64Array(N);
+      let dhi = 0, ghi = 0;
+      for (const h of epw.hours) {
+        if (!inPeriod(h.month)) continue;
+        // EPW hour 7 contains 06:00–07:00; use the same midpoint as the solar position.
+        if (h.hour - 0.5 < start || h.hour - 0.5 >= end) continue;
+        dhi += h.dhi; ghi += h.ghi;
+        if (h.dni <= 0) continue;
+        const s = solarPosition(h.month, h.day, h.hour - 0.5, epw.lat, epw.lon, epw.tz);
+        if (s.elevation <= 0) continue;
+        E[skyIndex(s.elevation, s.azimuth)] += h.dni;
+      }
+      for (let i = 0; i < nSky; i++) E[i] += dhi / Math.PI * P.all[i].omega;
+      for (let i = nSky; i < N; i++) E[i] += albedo * ghi / Math.PI * P.all[i].omega;
+      out[radiationKey(key, band)] = Float32Array.from(E);
     }
-    for (let i = 0; i < nSky; i++) E[i] += dhi / Math.PI * P.all[i].omega;
-    for (let i = nSky; i < N; i++) E[i] += albedo * ghi / Math.PI * P.all[i].omega;
-    out[key] = Float32Array.from(E);
   }
   return { dirs, energies: out, seasons, nSky };
 }

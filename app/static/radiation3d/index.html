@@ -77,11 +77,8 @@
         </label>
       </div>
       <button id="run" type="button" disabled>Calcular radiación</button>
-      <div class="seg" id="period" role="radiogroup" aria-label="Periodo">
-        <button type="button" data-p="annual" class="is-on">Anual</button>
-        <button type="button" data-p="summer">Verano</button>
-        <button type="button" data-p="winter">Invierno</button>
-      </div>
+      <div id="period" class="radiation-matrix" role="radiogroup" aria-label="Periodo y franja horaria"></div>
+      <p class="muted">Franjas en hora local estándar: 06:00–10:00, 11:00–15:00 y 16:00–20:00. El total incluye las 24 horas. Valores: media de los volúmenes analizados (kWh/m²).</p>
       <div class="row">
         <label for="lmin">Leyenda mín. kWh/m²
           <input id="lmin" type="number" value="0" placeholder="auto" autocomplete="off">
@@ -90,7 +87,7 @@
           <input id="lmax" type="number" value="1300" placeholder="auto" autocomplete="off">
         </label>
       </div>
-      <p class="muted">La leyenda se guarda por periodo: anual 0–1300, verano e invierno 0–500. Vacía = automática.</p>
+      <p class="muted">La leyenda se guarda por periodo y franja: total anual 0–1300, verano e invierno 0–500; franjas anual 0–500, verano e invierno 0–300. Vacía = automática.</p>
       <p class="muted" id="season-info">Cielo acumulado del EPW (577 zonas de cielo, difusa isótropa) con sombras del contexto y de los propios volúmenes.</p>
     </section>
 
@@ -99,7 +96,7 @@
       <p id="status" class="muted" role="status" aria-live="polite">Carga un EPW y un .3dm.</p>
       <div class="row">
         <button id="png" type="button" disabled>PNG vista</button>
-        <button id="png4" type="button" disabled title="Sombras de los cuatro días clave a la hora elegida">PNG 4 días</button>
+        <button id="png4" type="button" disabled title="Sombras de los cuatro días clave a la hora elegida">Sombras 4 días</button>
         <button id="csv" type="button" disabled>CSV</button>
       </div>
     </section>
@@ -124,6 +121,8 @@
             <button type="button" data-c="top" title="Planta">Planta</button>
             <button type="button" data-c="fit" title="Encuadrar todo el modelo">Ajustar</button>
           </div>
+          <button id="save-view" class="ghost" type="button" disabled>Guardar vista</button>
+          <button id="saved-views" class="ghost" type="button">Vistas guardadas</button>
         </div>
       </div>
       <div id="viewer" class="r3-viewer">
@@ -146,6 +145,20 @@
     </section>
   </main>
 </div>
+
+<dialog id="views-dialog" class="views-dialog" aria-labelledby="views-title">
+  <form method="dialog"><button class="modal-x" aria-label="Cerrar" type="submit">×</button></form>
+  <h3 id="views-title">Vistas guardadas</h3>
+  <p class="muted">Se guardan en este navegador. Solo recuperan la cámara, sin cambiar el análisis seleccionado.</p>
+  <form id="view-form">
+    <label for="view-name">Nombre de la vista
+      <input id="view-name" type="text" maxlength="80" required autocomplete="off">
+    </label>
+    <button id="confirm-save-view" type="submit">Guardar vista actual</button>
+  </form>
+  <p id="views-status" class="muted" role="status" aria-live="polite"></p>
+  <div id="views-list"></div>
+</dialog>
 
 <div class="overlay" id="busy" aria-hidden="true">
   <div class="modal" role="alertdialog" aria-live="polite">

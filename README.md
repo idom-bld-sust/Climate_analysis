@@ -34,6 +34,15 @@ La web tiene tres pestañas que comparten el mismo EPW:
     y reflejo del suelo (albedo configurable). Es un cálculo de radiación incidente por trazado de rayos en
     el navegador (sin rebotes entre edificios); para luz natural con interreflexiones hace falta Radiance.
   - Resultados por volumen (superficie, media, máximo, total) y CSV punto a punto.
+  - Matriz de radiación **anual / verano / invierno × total / mañana / mediodía / tarde**, con la media
+    ponderada por superficie de los volúmenes analizados. Las franjas son **06:00–10:00, 11:00–15:00 y
+    16:00–20:00**, en hora local estándar del EPW (sin cambio de verano); los intervalos intermedios
+    solo se incluyen en el total diario. El CSV incluye los doce resultados y cada celda tiene su propia leyenda.
+  - **PNG vista** descarga el resultado y la perspectiva actuales, con título y leyenda; **Sombras 4 días**
+    conserva las sombras de solsticios y equinoccios a la misma hora. Usa **Guardar vista** para recordar
+    cámaras con nombre y **Vistas guardadas** para recuperarlas desde un modal: se conservan en este
+    navegador, no en el archivo Rhino, y no cambian el periodo ni la franja seleccionados. Las cámaras
+    se guardan relativas al centro y tamaño del modelo para poder reutilizarlas al volver a cargarlo.
   - El modelo se lee con rhino3dm.js: se usan las mallas de render guardadas en el archivo. Si se guardó con
     «Guardar pequeño», las caras planas se reconstruyen; las curvas sin malla se aproximan. Código en
     `app/static/radiation3d/` (three.js y rhino3dm desde CDN; todo se calcula en local, el modelo no sale del ordenador).

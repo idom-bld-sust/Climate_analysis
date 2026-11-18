@@ -2,21 +2,26 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { readModel } from "./rhino.js";
-import { parseEpw, skyMatrices, daySuns, solarPosition, sunVector, KEY_DAYS } from "./sky.js";
+import { parseEpw, skyMatrices, daySuns, solarPosition, sunVector, KEY_DAYS, TIME_BANDS, radiationKey } from "./sky.js";
 
 const RHINO_URL = "https://cdn.jsdelivr.net/npm/rhino3dm@8.17.0/rhino3dm.module.min.js";
 const PALETTE = ["#4b6ba9", "#7393ca", "#aac8f7", "#c1d5d0", "#f5ef67", "#fce64a", "#ef9c15", "#ea7b00", "#ea4a00", "#ea2600"];
 const ROLE_COLOR = { context: 0xdfe2e8, analysis: 0xf6c99a };
 const PERIOD = { annual: "Anual", summer: "Verano", winter: "Invierno" };
+const BAND_SLUG = { morning: "manana", midday: "mediodia", afternoon: "tarde" };
 const MAX_POINTS = 150000;
 
 const $ = (id) => document.getElementById(id);
 const S = {
   rh: null, model: null, epw: null, roles: new Map(), meshes: new Map(), offset: [0, 0, 0], radius: 50,
-  home: new THREE.Vector3(), mode: "shadow", period: "annual",
-  // legend range per period (kWh/m2); an empty field means "auto" (min-max of the results)
-  ranges: { annual: [0, 1300], summer: [0, 500], winter: [0, 500] }, radiation: null, sunhours: null, sceneKey: null, playing: false,
+  home: new THREE.Vector3(), mode: "shadow", period: "annual", band: "all",
+  // Legend range per period and time band (kWh/m2); null means automatic.
+  ranges: Object.fromEntries(Object.keys(PERIOD).flatMap((p) => Object.keys(TIME_BANDS).map((b) =>
+    [radiationKey(p, b), [0, b === "all" ? (p === "annual" ? 1300 : 500) : (p === "annual" ? 500 : 300)]]))),
+  radiation: null, sunhours: null, sceneKey: null, playing: false,
 };
+const selectedKey = () => radiationKey(S.period, S.band);
+const selectedLabel = () => `${PERIOD[S.period]} · ${TIME_BANDS[S.band].label}`;
 
 // ---------------------------------------------------------------- status / busy
 function status(msg, error = false) { const s = $("status"); s.textContent = msg; s.classList.toggle("is-error", error); }
@@ -112,6 +117,84 @@ function setCamera(kind, animate = true) {
   camera.near = R / 500; camera.far = R * 60; camera.updateProjectionMatrix();
   if (!animate) { camera.position.copy(p1); controls.target.copy(t); controls.update(); render(); return; }
   fly = { t0: performance.now(), ms: 450, p0: camera.position.clone(), p1, q0: controls.target.clone(), q1: t };
+}
+
+// Store camera coordinates relative to the model frame so views also fit a reloaded model.
+const VIEWS_KEY = "climate-radiation3d-views";
+function readViews() {
+  const views = JSON.parse(localStorage.getItem(VIEWS_KEY) || "[]");
+  const vector = (v) => Array.isArray(v) && v.length === 3 && v.every(Number.isFinite);
+  if (!Array.isArray(views) || views.some((v) => !v || typeof v.name !== "string"
+    || !vector(v.position) || !vector(v.target))) throw new Error("Los datos de las vistas guardadas no son válidos.");
+  return views;
+}
+
+function viewsMessage(text, error = false) {
+  $("views-status").textContent = text;
+  $("views-status").classList.toggle("is-error", error);
+}
+
+function renderViews() {
+  const views = readViews(), list = $("views-list");
+  list.replaceChildren();
+  if (!views.length) { list.textContent = "Todavía no hay vistas guardadas."; return; }
+  for (const view of views) {
+    const row = document.createElement("div"), open = document.createElement("button"), remove = document.createElement("button");
+    row.className = "saved-view";
+    open.type = remove.type = "button";
+    open.textContent = view.name;
+    open.disabled = !S.model;
+    open.addEventListener("click", () => {
+      fly = null;
+      controls.enableDamping = false;
+      controls.update();
+      camera.position.fromArray(view.position).multiplyScalar(S.radius).add(S.home);
+      controls.target.fromArray(view.target).multiplyScalar(S.radius).add(S.home);
+      camera.near = S.radius / 500; camera.far = S.radius * 60; camera.updateProjectionMatrix();
+      controls.update();
+      controls.enableDamping = true;
+      render();
+      $("views-dialog").close();
+    });
+    remove.textContent = "Eliminar";
+    remove.className = "ghost";
+    remove.setAttribute("aria-label", `Eliminar ${view.name}`);
+    remove.addEventListener("click", () => {
+      try {
+        localStorage.setItem(VIEWS_KEY, JSON.stringify(readViews().filter((v) => v.name !== view.name)));
+        renderViews();
+        viewsMessage("Vista eliminada.");
+      } catch (e) { viewsMessage(`No se pudo eliminar la vista: ${e.message}`, true); }
+    });
+    row.append(open, remove); list.append(row);
+  }
+}
+
+function openViews(save = false) {
+  $("view-form").hidden = !save;
+  $("view-name").value = "";
+  viewsMessage("");
+  try { renderViews(); } catch (e) { $("views-list").replaceChildren(); viewsMessage(`No se pudieron leer las vistas: ${e.message}`, true); }
+  $("views-dialog").showModal();
+  if (save) $("view-name").focus();
+}
+
+function saveView(e) {
+  e.preventDefault();
+  if (!S.model) { viewsMessage("Carga un modelo antes de guardar una vista.", true); return; }
+  const name = $("view-name").value.trim();
+  if (!name) { viewsMessage("Escribe un nombre para la vista.", true); return; }
+  try {
+    const views = readViews();
+    if (views.some((v) => v.name.toLocaleLowerCase() === name.toLocaleLowerCase())) {
+      viewsMessage("Ya existe una vista con ese nombre. Elige otro nombre o elimina la anterior.", true); return;
+    }
+    views.push({ name, position: camera.position.clone().sub(S.home).divideScalar(S.radius).toArray(),
+      target: controls.target.clone().sub(S.home).divideScalar(S.radius).toArray() });
+    localStorage.setItem(VIEWS_KEY, JSON.stringify(views));
+    renderViews(); viewsMessage(`Vista «${name}» guardada.`);
+    $("view-name").value = "";
+  } catch (e) { viewsMessage(`No se pudo guardar la vista: ${e.message}`, true); }
 }
 
 // double click on the model: orbit around that point
@@ -454,8 +537,9 @@ async function runRadiation() {
     const t0 = performance.now();
     const parts = await runJob(grid, (pts, nrm) => ({ type: "radiation", pts, nrm, dirs: sky.dirs, energies: sky.energies }));
     const res = {};
-    for (const k of Object.keys(PERIOD)) res[k] = joinChunks(parts.map((p) => p && p[k]), n);
+    for (const k of Object.keys(sky.energies)) res[k] = joinChunks(parts.map((p) => p && p[k]), n);
     S.radiation = { grid, res, seasons: sky.seasons };
+    drawMatrix();
     const mn = (ms) => ms.map((m) => ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"][m - 1]).join("–");
     $("season-info").textContent = `Verano: ${mn([sky.seasons.summer[0], sky.seasons.summer[2]])} · Invierno: ${mn([sky.seasons.winter[0], sky.seasons.winter[2]])}. `
       + `${n.toLocaleString("es")} puntos en ${((performance.now() - t0) / 1000).toFixed(1)} s.`;
@@ -485,6 +569,7 @@ async function runSunHours() {
 
 function clearResults() {
   S.radiation = null; S.sunhours = null;
+  drawMatrix();
   $("mode").querySelector('[data-m="radiation"]').disabled = true;
   $("mode").querySelector('[data-m="sunhours"]').disabled = true;
   if (S.mode !== "shadow") setMode("shadow"); else showResults();
@@ -507,8 +592,8 @@ function niceRange(vals) {
 
 function current() {
   if (S.mode === "radiation" && S.radiation) {
-    return { grid: S.radiation.grid, vals: S.radiation.res[S.period], unit: "kWh/m²",
-      title: `Radiación acumulada · ${PERIOD[S.period]}`, digits: 0 };
+    return { grid: S.radiation.grid, vals: S.radiation.res[selectedKey()], unit: "kWh/m²",
+      title: `Radiación acumulada · ${selectedLabel()}`, digits: 0 };
   }
   if (S.mode === "sunhours" && S.sunhours) {
     return { grid: S.sunhours.grid, vals: S.sunhours.res, unit: "h", fixed: [0, Math.ceil(S.sunhours.max)],
@@ -531,7 +616,7 @@ function showResults() {
   $("view-title").textContent = cur ? cur.title : "Sombras";
   if (!cur) { render(); return; }
   const auto = cur.fixed || niceRange(cur.vals);
-  const set = S.mode === "radiation" ? S.ranges[S.period] : [null, null];
+  const set = S.mode === "radiation" ? S.ranges[selectedKey()] : [null, null];
   const lo = set[0] ?? auto[0], hi = set[1] ?? auto[1];
   const { grid, vals } = cur, n = vals.length;
   const col = new Float32Array(9 * n), c = new THREE.Color();
@@ -554,6 +639,24 @@ function showResults() {
   render();
 }
 
+function drawMatrix() {
+  const labels = ["Total", "Mañana<br>06–10", "Mediodía<br>11–15", "Tarde<br>16–20"];
+  let html = '<span></span>' + labels.map((label) => `<span class="matrix-heading">${label}</span>`).join("");
+  const data = S.radiation, area = data?.grid.area;
+  const totalArea = area?.reduce((a, b) => a + b, 0);
+  for (const [p, label] of Object.entries(PERIOD)) {
+    html += `<span class="matrix-row">${label}</span>`;
+    for (const [band, { label: time }] of Object.entries(TIME_BANDS)) {
+      const key = radiationKey(p, band), on = p === S.period && band === S.band;
+      const mean = data ? data.res[key].reduce((sum, v, i) => sum + v * area[i], 0) / totalArea : null;
+      html += `<button type="button" role="radio" aria-checked="${on}" data-p="${p}" data-band="${band}"
+        class="${on ? "is-on" : ""}" aria-label="${label} · ${time}" title="${label} · ${time}${mean === null ? "" : " · kWh/m²"}">`
+        + `${mean === null ? "—" : mean.toLocaleString("es", { maximumFractionDigits: 0 })}</button>`;
+    }
+  }
+  $("period").innerHTML = html;
+}
+
 function drawLegend(cur, lo, hi) {
   const fmt = (v) => v.toLocaleString("es", { maximumFractionDigits: cur.digits });
   const steps = 10, cells = [], c = new THREE.Color();
@@ -569,8 +672,8 @@ function drawSummary(cur) {
     const r = rows.get(id), v = cur.vals[i], A = grid.area[i];
     r.a += A; r.s += v * A; r.mx = Math.max(r.mx, v); r.mn = Math.min(r.mn, v);
     if (S.mode === "radiation") {
-      for (const k of Object.keys(PERIOD)) r.extra[k] = (r.extra[k] || 0) + S.radiation.res[k][i] * A;
-      r.mxA = Math.max(r.mxA ?? -Infinity, S.radiation.res.annual[i]);
+      for (const k of Object.keys(PERIOD)) r.extra[k] = (r.extra[k] || 0) + S.radiation.res[radiationKey(k, S.band)][i] * A;
+      r.mxA = Math.max(r.mxA ?? -Infinity, S.radiation.res[radiationKey("annual", S.band)][i]);
     }
   });
   const name = (id) => { const o = S.model.objects.find((x) => x.id === id); return o.name || o.layer; };
@@ -580,7 +683,7 @@ function drawSummary(cur) {
     html = "<tr><th>Volumen</th><th>Superficie m²</th><th>Anual kWh/m²</th><th>Verano kWh/m²</th><th>Invierno kWh/m²</th><th>Máx. anual</th><th>Total anual MWh</th></tr>";
     for (const [id, r] of rows) html += `<tr><td>${name(id)}</td><td>${f0(r.a)}</td><td>${f0(r.extra.annual / r.a)}</td><td>${f0(r.extra.summer / r.a)}</td>`
       + `<td>${f0(r.extra.winter / r.a)}</td><td>${f0(r.mxA)}</td><td>${f1(r.extra.annual / 1000)}</td></tr>`;
-    $("summary-title").textContent = "Radiación acumulada";
+    $("summary-title").textContent = `Radiación acumulada · ${TIME_BANDS[S.band].label}`;
   } else {
     html = "<tr><th>Volumen</th><th>Superficie m²</th><th>Media h</th><th>Mín. h</th><th>Máx. h</th></tr>";
     for (const [id, r] of rows) html += `<tr><td>${name(id)}</td><td>${f0(r.a)}</td><td>${f1(r.s / r.a)}</td><td>${f1(r.mn)}</td><td>${f1(r.mx)}</td></tr>`;
@@ -607,8 +710,28 @@ const base = () => ($("model-name").textContent || "modelo").replace(/\.3dm$/i, 
 function pngView() {
   render();
   const tag = { shadow: `sombras-${day().key}-${fmtHour(Number($("hour").value)).replace(":", "")}`,
-    sunhours: `horas-sol-${S.sunhours?.day.key}`, radiation: `radiacion-${PERIOD[S.period].toLowerCase()}` }[S.mode];
-  renderer.domElement.toBlob((b) => download(`${base()}-${tag}.png`, b));
+    sunhours: `horas-sol-${S.sunhours?.day.key}`,
+    radiation: `radiacion-${PERIOD[S.period].toLowerCase()}${S.band === "all" ? "" : `-${BAND_SLUG[S.band]}`}` }[S.mode];
+  const cv = Object.assign(document.createElement("canvas"), { width: renderer.domElement.width, height: renderer.domElement.height });
+  const ctx = cv.getContext("2d"), H = cv.height, pad = Math.max(12, Math.round(H / 40)), font = Math.max(12, Math.round(H / 40));
+  ctx.drawImage(renderer.domElement, 0, 0);
+  ctx.font = `600 ${font}px system-ui, sans-serif`;
+  ctx.fillStyle = "#1d2433";
+  ctx.fillText($("view-title").textContent, pad, pad + font);
+  const cur = current();
+  if (cur) {
+    const auto = cur.fixed || niceRange(cur.vals), range = S.mode === "radiation" ? S.ranges[selectedKey()] : auto;
+    const lo = range[0] ?? auto[0], hi = range[1] ?? auto[1], w = Math.min(cv.width - 2 * pad, 360 * H / 600), y = H - pad - font * 3;
+    ctx.fillStyle = "#ffffff"; ctx.fillRect(pad - 6, y - 6, w + 12, font * 3 + 6);
+    const color = new THREE.Color();
+    for (let i = 0; i < 100; i++) {
+      ctx.fillStyle = `#${colorAt(i / 99, color).getHexString()}`;
+      ctx.fillRect(pad + i * w / 100, y, w / 100 + 1, font);
+    }
+    ctx.fillStyle = "#1d2433";
+    ctx.fillText(`${lo.toLocaleString("es", { maximumFractionDigits: 1 })} – ${hi.toLocaleString("es", { maximumFractionDigits: 1 })} ${cur.unit}`, pad, y + font * 2.4);
+  }
+  cv.toBlob((b) => { if (b) download(`${base()}-${tag}.png`, b); else status("No se pudo generar el PNG.", true); });
 }
 
 async function png4() {
@@ -642,14 +765,16 @@ function csv() {
   const name = new Map(S.model.objects.map((o) => [o.id, o.name || o.layer]));
   const head = ["objeto", "x", "y", "z", "nx", "ny", "nz", "area_m2"];
   const sameGrid = S.radiation && S.sunhours && S.radiation.grid.pts.length === S.sunhours.grid.pts.length;
-  if (S.radiation) head.push("anual_kWh_m2", "verano_kWh_m2", "invierno_kWh_m2");
+  const radiationKeys = Object.keys(TIME_BANDS).flatMap((b) => Object.keys(PERIOD).map((p) =>
+    ({ key: radiationKey(p, b), label: `${PERIOD[p].toLowerCase()}${b === "all" ? "" : `_${BAND_SLUG[b]}`}_kWh_m2` })));
+  if (S.radiation) head.push(...radiationKeys.map((k) => k.label));
   if (S.sunhours && (!S.radiation || sameGrid)) head.push(`horas_sol_${S.sunhours.day.key}`);
   const lines = [head.join(";")];
   const n = g.pts.length / 3, o = S.offset, f = (v, d = 3) => v.toFixed(d).replace(".", ",");
   for (let i = 0; i < n; i++) {
     const row = [name.get(g.owner[i]), f(g.pts[3 * i] + o[0]), f(g.pts[3 * i + 1] + o[1]), f(g.pts[3 * i + 2] + o[2]),
       f(g.nrm[3 * i]), f(g.nrm[3 * i + 1]), f(g.nrm[3 * i + 2]), f(g.area[i])];
-    if (S.radiation) row.push(f(S.radiation.res.annual[i], 1), f(S.radiation.res.summer[i], 1), f(S.radiation.res.winter[i], 1));
+    if (S.radiation) row.push(...radiationKeys.map((k) => f(S.radiation.res[k.key][i], 1)));
     if (S.sunhours && (!S.radiation || sameGrid)) row.push(f(S.sunhours.res[i], 2));
     lines.push(row.join(";"));
   }
@@ -697,28 +822,35 @@ $("sunhours").addEventListener("click", runSunHours);
 $("grid").addEventListener("change", clearResults);
 $("albedo").addEventListener("change", () => { if (S.radiation) clearResults(); });
 function fillRange() {
-  const r = S.ranges[S.period];
+  const r = S.ranges[selectedKey()];
   $("lmin").value = r[0] ?? ""; $("lmax").value = r[1] ?? "";
   $("lmin").placeholder = $("lmax").placeholder = "auto";
 }
 ["lmin", "lmax"].forEach((id, k) => $(id).addEventListener("input", () => {
   const v = $(id).value;
-  S.ranges[S.period][k] = v === "" || !Number.isFinite(Number(v)) ? null : Number(v);
+  S.ranges[selectedKey()][k] = v === "" || !Number.isFinite(Number(v)) ? null : Number(v);
   showResults();
 }));
 fillRange();
+drawMatrix();
 $("period").addEventListener("click", (e) => {
   const b = e.target.closest("button"); if (!b) return;
   S.period = b.dataset.p;
+  S.band = b.dataset.band;
   fillRange();
-  $("period").querySelectorAll("button").forEach((x) => x.classList.toggle("is-on", x === b));
+  $("period").querySelectorAll("button").forEach((x) => {
+    x.classList.toggle("is-on", x === b); x.setAttribute("aria-checked", String(x === b));
+  });
   if (S.radiation) setMode("radiation");
 });
 $("mode").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b && !b.disabled) setMode(b.dataset.m); });
 $("cams").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) setCamera(b.dataset.c); });
+$("save-view").addEventListener("click", () => openViews(true));
+$("saved-views").addEventListener("click", () => openViews());
+$("view-form").addEventListener("submit", saveView);
 $("png").addEventListener("click", pngView);
 $("png4").addEventListener("click", png4);
 $("csv").addEventListener("click", csv);
-const enableExports = () => { const on = !!S.model; $("png").disabled = !on; $("png4").disabled = !(on && S.epw); $("csv").disabled = !on; };
+const enableExports = () => { const on = !!S.model; $("png").disabled = !on; $("png4").disabled = !(on && S.epw); $("csv").disabled = !on; $("save-view").disabled = !on; };
 new MutationObserver(enableExports).observe($("status"), { childList: true });
 updateDayLimits(); updateSun(); resize();
